@@ -52,9 +52,9 @@ public class App
         running=true;
         
         printfs = new FileOutputStream[NODES];
-        printfs[0] = new FileOutputStream("printf0.txt");
-        printfs[1] = new FileOutputStream("printf1.txt");
-        printfs[2] = new FileOutputStream("printf2.txt");
+        printfs[0] = new FileOutputStream("eacirc0.txt");
+        printfs[1] = new FileOutputStream("eacirc1.txt");
+        printfs[2] = new FileOutputStream("eacirc2.txt");
         
         // Connect to motes, wuhaa.
         MoteIF motes[] = new MoteIF[NODES];
