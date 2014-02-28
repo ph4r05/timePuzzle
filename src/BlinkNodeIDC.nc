@@ -141,6 +141,7 @@ implementation {
 		} else {
 			printf("tosNodeId illegal %d\n", TOS_NODE_ID);
 			printfflush();
+			return;
 		}
 		
 		printf("msgId=%d wordNum=%d\n", curMsg, wordNum);
