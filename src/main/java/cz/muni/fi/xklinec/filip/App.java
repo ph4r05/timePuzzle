@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -52,31 +53,16 @@ public class App
         running=true;
         
         printfs = new FileOutputStream[NODES];
-        printfs[0] = new FileOutputStream("eacirc0.txt");
-        printfs[1] = new FileOutputStream("eacirc1.txt");
-        printfs[2] = new FileOutputStream("eacirc2.txt");
+        MoteIF motes[] = new MoteIF[NODES];
         
         // Connect to motes, wuhaa.
-        MoteIF motes[] = new MoteIF[NODES];
-        motes[0] = connectToNode(NODES_DESC[0]);
-        motes[1] = connectToNode(NODES_DESC[1]);
-        motes[2] = connectToNode(NODES_DESC[2]);
-        log.info("Main app initialized");
-        
-        // Register printf message receive.
-        for(int node=0; node<NODES; node++){
-            final int nodeId = node;
-            log.info("Registering node " + node + " printf listener; moteIf=" + motes[node]);
-            
-            // Register printf listener.
-            motes[node].registerListener(new PrintfMsg(), new MessageListener() {
-                @Override
-                public void messageReceived(int i, Message msg) {
-                    msgReceived(nodeId, msg);
-                }
-            });
+        for(int k=0; k<NODES; k++){
+            printfs[k] = new FileOutputStream(String.format("eacirc_%02d.txt", k));
+            motes[k] = connectToNodeSilent(NODES_DESC[k], k);
         }
         
+        log.info("Main app initialized");
+       
         // Do this infinitelly.
         int lastState = -1;
         long lastStateChange = 0;
@@ -108,6 +94,15 @@ public class App
                         BlinkMsg blinkMsg = new BlinkMsg();
                         blinkMsg.set_msgId(msgCode);
                         
+                        // If empty -> reconnect.
+                        if (motes[node]==null){
+                            motes[node] = connectToNodeSilent(NODES_DESC[node], node);
+                        }
+                        
+                        if (motes[node]==null){
+                            continue;
+                        }
+                        
                         try {
                             log.info("Going to send message, messageId " + msgCode + " to node " + node);
                             motes[node].send(0xffff, blinkMsg);
@@ -123,7 +118,7 @@ public class App
                                 log.error("Crap again! Cannot shut down node", ex2);
                             }
                              
-                            motes[node] = connectToNode(NODES_DESC[node]);
+                            motes[node] = connectToNodeSilent(NODES_DESC[node], node);
                         }
                     }
                 }
@@ -173,11 +168,25 @@ public class App
             node = NODE_TO_ID[nodeId];
             fos = printfs[nodeId];
             
+            // date formater for human readable date format
+            SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            Calendar calendar = Calendar.getInstance();
+            StringBuilder tstampString = new StringBuilder();
+            long timestamp = System.currentTimeMillis();
+            
+            tstampString.append("# TS[")
+                        .append(timestamp)
+                        .append("]; F[")
+                        .append(formatter.format(calendar.getTime()))
+                        .append("] ");
+            final String tstamp = tstampString.toString();
+            
             final PrintfMsg pm = (PrintfMsg) msg;
             for (int i = 0; i < PrintfMsg.totalSize_buffer(); i++) {
                 char nextChar = (char) (pm.getElement_buffer(i));
                 if (nextChar != 0) {
                     fos.write(nextChar);
+                    if (nextChar=='\n') fos.write(tstamp.getBytes("UTF-8"));
                 }
             }
             
@@ -188,13 +197,23 @@ public class App
         }
     }
     
+    public MoteIF connectToNodeSilent(String source, int nodeId){
+        try {
+            return connectToNode(source, nodeId);
+        } catch (Exception e){
+            log.error("Exception in connect", e);
+        }
+        
+        return null;
+    }
+    
     /**
      * Connect to Tinyos node.
      * 
      * @param source
      * @return 
      */
-    public MoteIF connectToNode(String source){
+    public MoteIF connectToNode(String source, final int nodeId){
         // build custom error mesenger - store error messages from tinyos to logs directly
         TOSLogMessenger messenger = new TOSLogMessenger();
         // instantiate phoenix source
@@ -208,6 +227,17 @@ public class App
         } else {
             throw new IllegalArgumentException("Connection to some node was not successfull, path: " + source);
         }
+        
+        // Register printf listener here (abstraction problem but is quite simple & convnient).
+        log.info("Registering node " + source + " printf listener; moteIf=" + moteInterface);
+
+        // Register printf listener.
+        moteInterface.registerListener(new PrintfMsg(), new MessageListener() {
+            @Override
+            public void messageReceived(int i, Message msg) {
+                msgReceived(nodeId, msg);
+            }
+        });
         
         return moteInterface;
     }
