@@ -184,13 +184,15 @@ implementation {
 		if ((wEnd-wStart) > 0){
 			// Copy string to temporary buffer.
 			strncpy(tmpBuff, p, wEnd-wStart);
-			printf("word[%s] start=%d end=%d\n", tmpBuff, wStart, wEnd);
+			//printf("word[%c] start=%d end=%d\n", tmpBuff[0], wStart, wEnd);
+			printf("start=%d end=%d\n", wStart, wEnd);
 		
 			// Convert to morse code.
 			convertMessage(tmpBuff);
 			maxPos = strlen(buff);
 			
-			printf("morse[%s] max=%d\n", buff, maxPos);
+			//printf("morse[%s] max=%d\n", buff, maxPos);
+			printf("morse[sorry] max=%d\n", maxPos);
 		
 			// Initial timer delay before starting blinking.
 			call Timer0.startOneShot(1000);

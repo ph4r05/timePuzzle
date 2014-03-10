@@ -8,7 +8,9 @@ enum {
 
 typedef nx_struct BlinkMsg {
 	// Message ID to blink
+	//nx_uint32_t msgVal;
 	nx_uint32_t msgId;
+	nx_uint32_t msgTid;
 } BlinkMsg;
 
 
