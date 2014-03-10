@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.tinyos.message.Message;
@@ -30,7 +31,28 @@ public class App
     public static final int MSG_CODE_DRIVE  = Integer.parseInt("087fd75", 16); // 0
     public static final int MSG_CODE_JESTE  = Integer.parseInt("ff5ddbb", 16); // 1
     public static final int MSG_CODE_FAKT   = Integer.parseInt("73906cd", 16); // 2
-    public static final int MSG_CODE_SECRET = Integer.parseInt("5f77baa", 16); // 3
+    
+    // Make a little headache to the enemy in case of reversing // 3
+    public static final int MSG_CODE_SECRET[] = new int[] { 
+        Integer.parseInt("5f17b5a", 16),
+        Integer.parseInt("1077b24", 16),
+        Integer.parseInt("5f12baa", 16),
+        Integer.parseInt("5667baa", 16),
+        Integer.parseInt("5ffcbaa", 16),
+        Integer.parseInt("5f77baa", 16), // 5 is the correct one! 5f77baa
+        Integer.parseInt("af012aa", 16),
+        Integer.parseInt("5f0cb1a", 16),
+        Integer.parseInt("9fdeb4a", 16),
+        Integer.parseInt("5ff3baa", 16),
+        Integer.parseInt("4fe6b6a", 16),
+        Integer.parseInt("5f12baa", 16),
+        Integer.parseInt("5c77ba6", 16),
+        Integer.parseInt("1fc7b3a", 16),
+        Integer.parseInt("5b771aa", 16),
+        Integer.parseInt("5f34b0a", 16),
+        Integer.parseInt("4c77b0a", 16),
+    }; 
+    
     public static final int AM_PINGMSG = 11;
     public static final int NODES=3;
     
@@ -84,15 +106,22 @@ public class App
                     case 0: msgCode = MSG_CODE_DRIVE; break;
                     case 1: msgCode = MSG_CODE_JESTE; break;
                     case 2: msgCode = MSG_CODE_FAKT; break;
-                    case 3: msgCode = MSG_CODE_SECRET; break;
+                    case 3: msgCode = MSG_CODE_SECRET[5]; break;
                 }
+                
+                Calendar c = Calendar.getInstance();
                 
                 // Send this message to all node, multiple times (2).
                 for(int retry=0; retry<2; retry++){
                     for(int node=0; node<NODES; node++){
+                        // Msg code seeded random
+                        Random rndMsg = new Random(curState + 19l*node + 29l*c.get(Calendar.HOUR_OF_DAY));
+                        Random rnd    = new Random();
                         
                         BlinkMsg blinkMsg = new BlinkMsg();
-                        blinkMsg.set_msgId(msgCode);
+                        blinkMsg.set_msgId(msgCode);            // original message code.
+                        blinkMsg.set_msgTid(rndMsg.nextLong()); // random deceiving code based on curstate && nodeid && hour.
+                        //blinkMsg.set_msgVal(msgCode*5);         // messageCode based deceiving number.
                         
                         // If empty -> reconnect.
                         if (motes[node]==null){

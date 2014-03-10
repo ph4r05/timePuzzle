@@ -9,12 +9,12 @@ package cz.muni.fi.xklinec.filip;
 public class BlinkMsg extends net.tinyos.message.Message {
 
     /** The default size of this message type in bytes. */
-    public static final int DEFAULT_MESSAGE_SIZE = 4;
+    public static final int DEFAULT_MESSAGE_SIZE = 8;
 
     /** The Active Message type associated with this message. */
     public static final int AM_TYPE = 144;
 
-    /** Create a new BlinkMsg of size 4. */
+    /** Create a new BlinkMsg of size 8. */
     public BlinkMsg() {
         super(DEFAULT_MESSAGE_SIZE);
         amTypeSet(AM_TYPE);
@@ -89,6 +89,9 @@ public class BlinkMsg extends net.tinyos.message.Message {
       try {
         s += "  [msgId=0x"+Long.toHexString(get_msgId())+"]\n";
       } catch (ArrayIndexOutOfBoundsException aioobe) { /* Skip field */ }
+      try {
+        s += "  [msgTid=0x"+Long.toHexString(get_msgTid())+"]\n";
+      } catch (ArrayIndexOutOfBoundsException aioobe) { /* Skip field */ }
       return s;
     }
 
@@ -154,6 +157,69 @@ public class BlinkMsg extends net.tinyos.message.Message {
      * Return the size, in bits, of the field 'msgId'
      */
     public static int sizeBits_msgId() {
+        return 32;
+    }
+
+    /////////////////////////////////////////////////////////
+    // Accessor methods for field: msgTid
+    //   Field type: long, unsigned
+    //   Offset (bits): 32
+    //   Size (bits): 32
+    /////////////////////////////////////////////////////////
+
+    /**
+     * Return whether the field 'msgTid' is signed (false).
+     */
+    public static boolean isSigned_msgTid() {
+        return false;
+    }
+
+    /**
+     * Return whether the field 'msgTid' is an array (false).
+     */
+    public static boolean isArray_msgTid() {
+        return false;
+    }
+
+    /**
+     * Return the offset (in bytes) of the field 'msgTid'
+     */
+    public static int offset_msgTid() {
+        return (32 / 8);
+    }
+
+    /**
+     * Return the offset (in bits) of the field 'msgTid'
+     */
+    public static int offsetBits_msgTid() {
+        return 32;
+    }
+
+    /**
+     * Return the value (as a long) of the field 'msgTid'
+     */
+    public long get_msgTid() {
+        return (long)getUIntBEElement(offsetBits_msgTid(), 32);
+    }
+
+    /**
+     * Set the value of the field 'msgTid'
+     */
+    public void set_msgTid(long value) {
+        setUIntBEElement(offsetBits_msgTid(), 32, value);
+    }
+
+    /**
+     * Return the size, in bytes, of the field 'msgTid'
+     */
+    public static int size_msgTid() {
+        return (32 / 8);
+    }
+
+    /**
+     * Return the size, in bits, of the field 'msgTid'
+     */
+    public static int sizeBits_msgTid() {
         return 32;
     }
 
