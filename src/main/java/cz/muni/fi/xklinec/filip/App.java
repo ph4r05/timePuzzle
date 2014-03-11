@@ -91,10 +91,12 @@ public class App
         // Connect to motes, wuhaa.
         for(int k=0; k<NODES; k++){
             printfs[k] = new FileOutputStream(String.format("eacirc_%02d.txt", k));
+            
+            log.info("Connecting to the node: " + NODES_DESC[k]);
             motes[k] = connectToNodeSilent(NODES_DESC[k], k);
         }
         
-        log.info("Main app initialized");
+        log.info("Main app initialized, using NTP server: " + NTP_SERVER);
        
         // Do this infinitelly.
         int lastState = -1;
@@ -109,10 +111,12 @@ public class App
             
             int curState = getCurState(ntp);
             long curTime = ntp; //System.currentTimeMillis();
+            long diff = Math.abs(ntp - System.currentTimeMillis());
             
             // Send state change if new state is here or 30 minutes passed from the last one.
             if (curState!=lastState || (curTime - lastStateChange) > (1000*60*30)){
-                log.info(String.format("Emit new state, cur=%d last=%d curTime=%d system=%d last=%d", curState, lastState, curTime, System.currentTimeMillis(), lastStateChange));
+                log.info(String.format("Emit new state, curState=%d lastState=%d curTime=%d systemTime=%d diff=%d lastStateChange=%d", 
+                        curState, lastState, curTime, System.currentTimeMillis(), diff, lastStateChange));
                 
                 // Try to update system time?
                 
@@ -144,7 +148,7 @@ public class App
                         BlinkMsg blinkMsg = new BlinkMsg();
                         blinkMsg.set_msgId(msgCode);            // original message code.
                         blinkMsg.set_msgTid(rndMsg.nextLong()); // random deceiving code based on curstate && nodeid && hour.
-                        //blinkMsg.set_msgVal(msgCode*5);         // messageCode based deceiving number.
+                        //blinkMsg.set_msgVal(msgCode*5);       // messageCode based deceiving number.
                         
                         // If empty -> reconnect.
                         if (motes[node]==null){
@@ -192,11 +196,11 @@ public class App
         int hour = c.get(Calendar.HOUR_OF_DAY);
         int min  = c.get(Calendar.MINUTE);
         
-        if ((hour < 4 && hour >= 0) || (hour>=10)){
+        if ((hour < 4 && hour >= 0) || (hour>=11)){
             return 0;
-        } else if (hour>=9){
+        } else if (hour>=10){
             return 1;
-        } else if (hour>=8){
+        } else if (hour>8 || (hour==8 && min>30)){
             return 2;
         } else if (hour>=4){
             return 3;
@@ -443,11 +447,10 @@ public class App
             System.out.println();
             try {
                 InetAddress hostAddr = InetAddress.getByName(NTP_SERVER);
-                log.info("Srvr: " + hostAddr.getHostName() + "/" + hostAddr.getHostAddress());
+                //log.info("Srvr: " + hostAddr.getHostName() + "/" + hostAddr.getHostAddress());
                 
                 TimeInfo info = client.getTime(hostAddr);
                 ret = processResponse(info);
-                
             } catch (IOException ioe) {
                 log.error("Exception in NTPMilli()", ioe);
             }
