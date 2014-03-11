@@ -1,5 +1,6 @@
 package cz.muni.fi.xklinec.filip;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -13,6 +14,8 @@ import java.util.Random;
 import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.tinyos.message.Message;
 import net.tinyos.message.MessageListener;
 import net.tinyos.message.MoteIF;
@@ -114,7 +117,7 @@ public class App
             long diff = Math.abs(ntp - System.currentTimeMillis());
             
             // Send state change if new state is here or 30 minutes passed from the last one.
-            if (curState!=lastState || (curTime - lastStateChange) > (1000*60*30)){
+            if (curState!=lastState || (curTime - lastStateChange) > 1000*30){//(1000*60*30)){
                 log.info(String.format("Emit new state, curState=%d lastState=%d curTime=%d systemTime=%d diff=%d lastStateChange=%d", 
                         curState, lastState, curTime, System.currentTimeMillis(), diff, lastStateChange));
                 
@@ -153,6 +156,7 @@ public class App
                         // If empty -> reconnect.
                         if (motes[node]==null){
                             motes[node] = connectToNodeSilent(NODES_DESC[node], node);
+                            Thread.sleep(5000);
                         }
                         
                         if (motes[node]==null){
@@ -160,27 +164,29 @@ public class App
                         }
                         
                         try {
-                            log.info("Going to send message, messageId " + msgCode + " to node " + node);
+                            log.info("Going to send message, messageId " + curState + " to node " + node);
                             motes[node].send(0xffff, blinkMsg);
                             log.info("Message sent");
-                        } catch (IOException ex) {
+                        } catch (Throwable ex) {
                             log.error("Crap! Something broken with node " + node, ex);
                             
+                            // Node shutdown block.
                             try {
+                                log.info("Going to shut node down & reconnect");
                                 motes[node].getSource().shutdown();
-                                motes[node] = null;
-                                Thread.sleep(5000); // 5 sec sleep.
-                            } catch(Exception ex2){
-                                log.error("Crap again! Cannot shut down node", ex2);
+                            } catch(Throwable ex2){
+                                log.error("Crap again! Cannot shut down node " + node, ex2);
                             }
-                             
+                            
+                            // Reconnect block.
+                            Thread.sleep(5000);
                             motes[node] = connectToNodeSilent(NODES_DESC[node], node);
                         }
                     }
                 }
             }
             
-            Thread.sleep(60000); // 60 sec sleep.
+            Thread.sleep(32000); // 60 sec sleep.
         }
     }
     
@@ -259,7 +265,7 @@ public class App
     public MoteIF connectToNodeSilent(String source, int nodeId){
         try {
             return connectToNode(source, nodeId);
-        } catch (Exception e){
+        } catch (Throwable e){
             log.error("Exception in connect", e);
         }
         
@@ -273,6 +279,21 @@ public class App
      * @return 
      */
     public MoteIF connectToNode(String source, final int nodeId){
+        // At first check presence of the file in the system.
+        Pattern pattern = Pattern.compile("^([\\w]+)@(.+):([\\w\\d]+)$", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(source);
+        if (matcher.matches()){
+            final String fname = matcher.group(2);
+            final File devFile = new File(fname);
+            if (devFile.exists()==false){
+                log.warn("Device file does not exist: " + fname);
+                return null;
+            } else {
+                log.info("Device file is ok: " + fname);
+            }
+        }
+        
+        
         // build custom error mesenger - store error messages from tinyos to logs directly
         TOSLogMessenger messenger = new TOSLogMessenger();
         // instantiate phoenix source
