@@ -8,10 +8,29 @@
 #include <asm/unistd.h>
 #include <asm/fcntl.h>
 #include <asm/errno.h>
+#include <asm/compat.h>
 #include <linux/types.h>
 #include <linux/dirent.h>
 #include <linux/slab.h>
 #include <linux/unistd.h>
+#include <linux/time.h>
+#include <linux/compat.h>
+
+// Manual definitions - we dont have exported ia32 symbols. 
+// TODO: can enumerate index if compat_sys_clock_settime is known... 
+#if (__NR_clock_settime==227)
+#define __NR_ia32_clock_settime 264
+#define __NR_ia32_adjtimex 124
+#else
+#warning "Cannot hook ia32 table"
+#endif
+
+
+// Definitions taken from: /boot/System.map
+#define ADDR_COMPAT_SYS_CLOCK_SETTIME 0xffffffff810ab830ul //ffffffff810ab830 T compat_sys_clock_settime
+#define ADDR_SYS_CALL_TABLE 0xffffffff818003a0ul //ffffffff818003a0 R sys_call_table
+#define ADDR_I32_SYS_CALL_TABLE 0xffffffff81803ca8ul //ffffffff81803ca8 r ia32_sys_call_table
+
 
 //
 // Sources:
@@ -32,14 +51,20 @@ static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 void prepare_hack(void);
 void enable_hack(void);
 void disable_hack(void);
+void enable_hack_ia32(void);
+void disable_hack_ia32(void);
 
 // original function pointer will be stored here
 asmlinkage int (*orig_getdents)(unsigned int fd, struct linux_dirent64 *dirp, unsigned int count);
 asmlinkage int (*orig_settimeofday)(const struct timeval *tv, const struct timezone *tz);
 asmlinkage int (*orig_clock_settime)(clockid_t clk_id, const struct timespec *tp);
 asmlinkage int (*orig_adjtimex)(struct timex *buf);
-// deprecated in x86_64 version, uses settimeofday.
-//asmlinkage int (*orig_stime)(time_t *t);
+
+// ia32 hooks:
+// .quad compat_sys_clock_settime
+// .quad compat_sys_adjtimex
+asmlinkage long (*orig_compat_sys_clock_settime)(clockid_t which_clock, struct compat_timespec __user *tp);
+asmlinkage long (*orig_compat_sys_adjtimex)(struct compat_timex __user *utp);
 
 #define SUCCESS 0
 #define DEVICE_NAME "chardev"	/* Dev name as it appears in /proc/devices   */
@@ -65,7 +90,12 @@ static struct file_operations fops = {
 #define DISABLE_HACK "vypni_hack"
 unsigned int success;
 unsigned int hacked;
+
+unsigned int success_ia32;
+unsigned int hacked_ia32;
+
 unsigned long *sys_call_table;
+unsigned long *ia32_sys_call_table;
 
 // stime, settimeofday
 asmlinkage int hacked_settimeofday(const struct timeval *tv, const struct timezone *tz){
@@ -79,11 +109,32 @@ asmlinkage int hacked_adjtimex(struct timex *buf){
 	return -1;
 }
 
+// date util
 asmlinkage int hacked_clock_settime(clockid_t clk_id, const struct timespec *tp){
-	printk(KERN_INFO "Call to clock_settime, tz=%p\n", tp);
-	return orig_clock_settime(clk_id, tp);
+        if (clk_id == CLOCK_REALTIME){
+            printk(KERN_INFO "Call to clock_settime(CLOCK_REALTIME, tp=%p)\n", tp);
+            return -1;
+        } else {
+            printk(KERN_INFO "Call to clock_settime(%d, tp=%p)\n", clk_id, tp);
+            return orig_clock_settime(clk_id, tp);
+        }
 }
 
+// adjtimex - ntpdate uses this one
+asmlinkage long hacked_compat_sys_adjtimex(struct compat_timex __user *utp){
+    printk(KERN_INFO "Call to compat_adjtimex, utp=%p\n", utp);
+    return -1;
+}
+
+asmlinkage long hacked_compat_sys_clock_settime(clockid_t which_clock, struct compat_timespec __user *tp){
+    if (which_clock == CLOCK_REALTIME){
+        printk(KERN_INFO "Call to compat_clock_settime(CLOCK_REALTIME, tp=%p)\n", tp);
+        return -1;
+    } else {
+        printk(KERN_INFO "Call to compat_clock_settime(%d, tp=%p)\n", which_clock, tp);
+        return orig_compat_sys_clock_settime(which_clock, tp);
+    }
+}
 
 void prepare_hack(){
 	//
@@ -91,7 +142,8 @@ void prepare_hack(){
 	// from "strace ls" we can observe that getdents64 system call is used
 	// Syscall address: System.map 
 	//
-	sys_call_table = (unsigned long*)0xffffffff818003a0;
+	sys_call_table = (unsigned long*)ADDR_SYS_CALL_TABLE;
+        printk(KERN_INFO "*** x86_64\n");
 	printk(KERN_INFO "My sys_call_table lies on address: %p\n", sys_call_table);
 		
 	// Verify correctness of the mapping
@@ -109,11 +161,45 @@ void prepare_hack(){
 		// hack right now
 		enable_hack();
 	}
+        
+        // ia32_sys_call_table
+        printk(KERN_INFO "*** x86\n");
+        
+        ia32_sys_call_table = (unsigned long*)ADDR_I32_SYS_CALL_TABLE;
+        printk(KERN_INFO "My ia32_sys_call_table lies on address: %p\n", ia32_sys_call_table);
+        
+        // Unfortunately compat_ symbols are not exported, so cannot check correctness of ia32 base address.
+        // Backup original call - we will need it in our hacked wrapper
+#ifdef __NR_ia32_clock_settime
+        if (ia32_sys_call_table[__NR_ia32_clock_settime] == (unsigned long*)ADDR_COMPAT_SYS_CLOCK_SETTIME){
+                orig_compat_sys_clock_settime = ia32_sys_call_table[__NR_ia32_clock_settime];
+                orig_compat_sys_adjtimex = ia32_sys_call_table[__NR_ia32_adjtimex];
+                success_ia32=1;
+                
+                printk(KERN_INFO "compat_sys_clock_settime=%p, idx=%d\n", (void*)ia32_sys_call_table[__NR_ia32_clock_settime], __NR_ia32_clock_settime);
+                // hack right now
+                enable_hack_ia32();
+        } else {
+            success_ia32=0;
+            printk(KERN_INFO "Cannot hook ia32_sys_call_table - address mismatch\n");
+        }
+#else
+        success_ia32=0;
+        printk(KERN_INFO "Cannot hook ia32_sys_call_table\n");
+#endif
+//	}
 }
 
 void enable_hack(){
-	if (success!=1) return;
-	if (hacked) return;
+	if (success!=1) {
+            printk(KERN_INFO "Cannot enable, succes!=1\n");
+            return;
+        }
+	if (hacked) {
+            printk(KERN_INFO "Already hooked\n");
+            return;
+        }
+        
 	hacked=1;
 	
 	// disable kernel page write protection
@@ -123,10 +209,35 @@ void enable_hack(){
 	//sys_call_table[__NR_getdents64] = hacked_getdents;
 	sys_call_table[__NR_settimeofday] = hacked_settimeofday;
 	sys_call_table[__NR_adjtimex] = hacked_adjtimex;
+        sys_call_table[__NR_clock_settime] = hacked_clock_settime;
 
 	// enable kernel page write protection back
 	write_cr0 (read_cr0 () | 0x10000);
-	printk(KERN_INFO "Syscall tampered.\n");
+	printk(KERN_INFO "Syscall tampered #3. new clock_settime=%p\n", (void*) sys_call_table[__NR_clock_settime]);
+}
+
+void enable_hack_ia32(){
+	if (success_ia32!=1) {
+            printk(KERN_INFO "Cannot enable, succes!=1\n");
+            return;
+        }
+	if (hacked_ia32) {
+            printk(KERN_INFO "Already hooked\n");
+            return;
+        }
+        
+	hacked_ia32=1;
+	
+	// disable kernel page write protection
+	write_cr0 (read_cr0 () & (~ 0x10000));
+
+	// redirect system call to our wrapper routine
+	ia32_sys_call_table[__NR_ia32_adjtimex] = hacked_compat_sys_adjtimex;
+        ia32_sys_call_table[__NR_ia32_clock_settime] = hacked_compat_sys_clock_settime;
+
+	// enable kernel page write protection back
+	write_cr0 (read_cr0 () | 0x10000);
+	printk(KERN_INFO "Syscall tampered ia32. new ia32_clock_settime=%p\n", (void*) ia32_sys_call_table[__NR_ia32_clock_settime]);
 }
 
 void disable_hack(){
@@ -142,10 +253,27 @@ void disable_hack(){
 	//sys_call_table[__NR_getdents64]=orig_getdents;
 	sys_call_table[__NR_settimeofday]=orig_settimeofday;
 	sys_call_table[__NR_adjtimex]=orig_adjtimex;
-
+        sys_call_table[__NR_clock_settime]=orig_clock_settime;
 
 	write_cr0 (read_cr0 () | 0x10000);
 	printk(KERN_INFO "Syscall restored.\n");
+}
+
+void disable_hack_ia32(){
+	if (success_ia32!=1) return;
+	if (!hacked_ia32) return;
+	hacked_ia32=0;
+
+	//
+	// restore syscall table
+	//
+	write_cr0 (read_cr0 () & (~ 0x10000));
+
+	ia32_sys_call_table[__NR_ia32_adjtimex]=orig_compat_sys_adjtimex;
+        ia32_sys_call_table[__NR_ia32_clock_settime]=orig_compat_sys_clock_settime;
+
+	write_cr0 (read_cr0 () | 0x10000);
+	printk(KERN_INFO "Syscall restored ia32.\n");
 }
 
 int __init init_module(void)
@@ -176,6 +304,7 @@ void __exit cleanup_module(void)
 	 */
 	unregister_chrdev(Major, DEVICE_NAME);
 	disable_hack();
+        disable_hack_ia32();
 }
 
 
@@ -270,9 +399,11 @@ device_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 	if (strncmp(ENABLE_HACK, wmsg, strlen(ENABLE_HACK))==0) {
 		printk(KERN_INFO "[+] Enabling syscall hook\n");
 		enable_hack();
+                enable_hack_ia32();
 	} else if (strncmp(DISABLE_HACK, wmsg, strlen(DISABLE_HACK))==0) {
 		printk(KERN_INFO "[+] Disabling syscall hook\n");
 		disable_hack();
+                disable_hack_ia32();
 	} else {
 		printk(KERN_INFO "[!] Unrecognized command\n");
 	}
