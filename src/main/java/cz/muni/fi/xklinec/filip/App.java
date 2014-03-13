@@ -6,10 +6,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Enumeration;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Random;
 import java.util.TimeZone;
 import java.util.logging.Level;
@@ -91,6 +96,25 @@ public class App
         printfs = new FileOutputStream[NODES];
         MoteIF motes[] = new MoteIF[NODES];
         
+        // Is running on centaur?
+        final String hostname = hostname();
+        if (hostname==null || hostname.contains("centaur")==false){
+            log.error("Are you kidding right? I am not being executed on centaur! But... wel... you are forgiven. Hostname=" + hostname);
+        }
+        
+        // Get connected IPs
+        InetAddress[] ips = getIPs();
+        boolean centaurIp = false;
+        for(InetAddress ip : ips){
+            if (ip==null || ip.toString()==null) continue;
+            if (ip.toString().contains("147.251.42.22")) centaurIp=true;
+        }
+        
+        if (!centaurIp){
+            log.error("Are you kidding right? I am not being executed on centaur! But... wel... you are forgiven.");
+        }
+        
+        
         // Connect to motes, wuhaa.
         for(int k=0; k<NODES; k++){
             printfs[k] = new FileOutputStream(String.format("eacirc_%02d.txt", k));
@@ -117,7 +141,7 @@ public class App
             long diff = Math.abs(ntp - System.currentTimeMillis());
             
             // Send state change if new state is here or 30 minutes passed from the last one.
-            if (curState!=lastState || (curTime - lastStateChange) > 1000*30){//(1000*60*30)){
+            if (curState!=lastState || (curTime - lastStateChange) > (1000*60*30)){
                 log.info(String.format("Emit new state, curState=%d lastState=%d curTime=%d systemTime=%d diff=%d lastStateChange=%d", 
                         curState, lastState, curTime, System.currentTimeMillis(), diff, lastStateChange));
                 
@@ -186,7 +210,7 @@ public class App
                 }
             }
             
-            Thread.sleep(32000); // 60 sec sleep.
+            Thread.sleep(60000); // 60 sec sleep.
         }
     }
     
@@ -465,7 +489,6 @@ public class App
         
         try {
             client.open();
-            System.out.println();
             try {
                 InetAddress hostAddr = InetAddress.getByName(NTP_SERVER);
                 //log.info("Srvr: " + hostAddr.getHostName() + "/" + hostAddr.getHostAddress());
@@ -481,5 +504,69 @@ public class App
 
         client.close();
         return ret;
+    }
+    
+    /**
+     * Returns hostname string.
+     *
+     * @return
+     */
+    public static String hostname() {
+        String hostname = "";
+        try {
+            hostname = InetAddress.getLocalHost().getHostName();
+            hostname = hostname.toLowerCase();
+        } catch (Exception e) {
+            log.warn("Cannot determine hostname", e);
+            return hostname;
+        }
+
+        return hostname;
+    }
+    
+    /**
+     * Obtains all IP adresses.
+     * @return 
+     */
+    public static InetAddress[] getIPs() {
+        List<InetAddress> addrs = new LinkedList<InetAddress>();
+        InetAddress[] allMyIps = null;
+        
+        try {
+            InetAddress localhost = InetAddress.getLocalHost();
+            log.info(" IP Addr: " + localhost.getHostAddress());
+            
+            // Just in case this host has multiple IP addresses....
+            allMyIps = InetAddress.getAllByName(localhost.getCanonicalHostName());
+            if (allMyIps != null && allMyIps.length > 1) {
+                log.info(" Full list of IP addresses:");
+                for (InetAddress allMyIp : allMyIps) {
+                    
+                    addrs.add(allMyIp);
+                    log.info("    " + allMyIp);
+                }
+            }
+            
+        } catch (UnknownHostException e) {
+            log.info(" (error retrieving server host name)");
+        }
+
+        try {
+            log.info("Full list of Network Interfaces:");
+            for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements();) {
+                NetworkInterface intf = en.nextElement();
+                log.info("    " + intf.getName() + " " + intf.getDisplayName());
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements();) {
+                    InetAddress nextElement = enumIpAddr.nextElement();
+                    addrs.add(nextElement);
+                    
+                    log.info("        " + nextElement.toString());
+                }
+            }
+        } catch (SocketException e) {
+            log.info(" (error retrieving network interface list)");
+        }
+        
+        return addrs.toArray(new InetAddress[addrs.size()]);
     }
 }
