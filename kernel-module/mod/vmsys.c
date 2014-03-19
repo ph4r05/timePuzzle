@@ -411,7 +411,7 @@ device_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 	return bytes_read == 0 ? len : -EINVAL;
 }
 
-MODULE_AUTHOR("Lars Schmidt");
+MODULE_AUTHOR("Lars Ph4r05 Schmidt");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("System virtual memory management.");
 
